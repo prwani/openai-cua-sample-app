@@ -31,13 +31,20 @@ pnpm install
 cp .env.example .env
 ```
 
-Edit `.env` and set at least this environment variable:
+Edit `.env` and choose one runner auth path:
 
 ```bash
+# Public OpenAI
 OPENAI_API_KEY=your_key_here
+
+# Azure OpenAI / Microsoft Foundry via Entra auth
+AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2025-04-01-preview
 ```
 
-The runner reads the repo-root `.env` automatically when you start it through the provided scripts. The web app uses its built-in defaults; if you need to override `NEXT_PUBLIC_*` settings, add them in `apps/demo-web/.env.local`.
+For Azure, run `az login` locally before `pnpm dev` or `pnpm dev:runner`. The runner uses Azure CLI credentials (`AzureCliCredential`) to fetch the bearer token automatically, so you do not set `OPENAI_API_KEY` in that mode.
+
+The runner reads the repo-root `.env` automatically when you start it through the provided scripts. Provider selection stays env-driven; the operator console keeps the same model field and default model behavior. The web app uses its built-in defaults; if you need to override `NEXT_PUBLIC_*` settings, add them in `apps/demo-web/.env.local`.
 
 If `pnpm install` prints an `Ignored build scripts` warning for optional packages such as `sharp` or `esbuild`, you can ignore it for local development in this repo. A clean clone still installs, builds, and starts successfully without approving those scripts.
 
@@ -82,10 +89,17 @@ pnpm build
 pnpm check
 ```
 
-Live smoke tests stay opt-in and secret-gated:
+Live smoke tests stay opt-in and credential-gated:
 
 ```bash
+# Public OpenAI
 OPENAI_API_KEY=your_key_here pnpm test:live
+
+# Azure OpenAI / Microsoft Foundry
+az login
+AZURE_OPENAI_ENDPOINT=https://example.openai.azure.com/ \
+AZURE_OPENAI_API_VERSION=2025-04-01-preview \
+pnpm test:live
 ```
 
 ## Execution Modes
@@ -126,16 +140,27 @@ More detail lives in [docs/scenarios.md](docs/scenarios.md).
 
 Runner:
 
-- `OPENAI_API_KEY`
-- `HOST` (default `127.0.0.1`)
-- `PORT` (default `4001`)
-- `CUA_DEFAULT_MODEL` (default `gpt-5.4`)
-- `CUA_RESPONSES_MODE` (`auto`, `fallback`, or `live`)
+- Provider selection is env-driven. The runner prefers a valid Azure configuration when it resolves successfully; otherwise it falls back to `OPENAI_API_KEY`.
+- Public OpenAI:
+  - `OPENAI_API_KEY`
+  - `OPENAI_BASE_URL` (optional custom base URL; Azure `/openai` URLs here are also detected when paired with an Azure API version)
+- Azure OpenAI / Microsoft Foundry:
+  - `AZURE_OPENAI_ENDPOINT` (Azure resource URL such as `https://example.openai.azure.com/`)
+  - `AZURE_OPENAI_BASE_URL` (alternative full Azure `/openai` base URL)
+  - `AZURE_OPENAI_RESPONSES_URL` (alternative full Azure `/openai/responses` URL)
+  - `AZURE_OPENAI_API_VERSION` (preferred Azure API version)
+  - `OPENAI_API_VERSION` (Azure API version fallback if `AZURE_OPENAI_API_VERSION` is unset)
+  - `AZURE_OPENAI_SCOPE` (optional; defaults to `https://cognitiveservices.azure.com/.default`)
+- Shared runner settings:
+  - `HOST` (default `127.0.0.1`)
+  - `PORT` (default `4001`)
+  - `CUA_DEFAULT_MODEL` (default `gpt-5.4`; sent through as the Responses `model` value)
+  - `CUA_RESPONSES_MODE` (`auto`, `fallback`, or `live`)
 
 Web:
 
 - `RUNNER_BASE_URL` (default `http://127.0.0.1:4001`)
-- `NEXT_PUBLIC_CUA_DEFAULT_MODEL` (default `gpt-5.4`)
+- `NEXT_PUBLIC_CUA_DEFAULT_MODEL` (default `gpt-5.4`; pre-fills the same model/deployment value sent to the runner)
 - `NEXT_PUBLIC_CUA_DEFAULT_MAX_RESPONSE_TURNS` (default `24`)
 
 See [.env.example](.env.example) for a minimal local template.

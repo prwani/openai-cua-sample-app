@@ -1,7 +1,8 @@
 import vm from "node:vm";
 import util from "node:util";
 
-import OpenAI from "openai";
+import { AzureCliCredential, getBearerTokenProvider } from "@azure/identity";
+import OpenAI, { AzureOpenAI } from "openai";
 
 import { type BrowserSession } from "@cua-sample/browser-runtime";
 
@@ -59,6 +60,24 @@ type ResponsesApiResponse = {
 
 type ResponsesLoopMode = "auto" | "fallback" | "live";
 
+type OpenAIResponsesClientConfig = {
+  apiKey: string;
+  baseURL?: string | undefined;
+  provider: "openai";
+};
+
+type AzureResponsesClientConfig = {
+  apiVersion: string;
+  baseURL?: string | undefined;
+  endpoint?: string | undefined;
+  provider: "azure";
+  tokenScope: string;
+};
+
+export type DefaultResponsesClientConfig =
+  | OpenAIResponsesClientConfig
+  | AzureResponsesClientConfig;
+
 type ResponsesClient = {
   create: (
     request: Record<string, unknown>,
@@ -96,13 +115,40 @@ type ResponsesLoopResult = {
 };
 
 const defaultInterActionDelayMs = 120;
+const defaultAzureOpenAIScope = "https://cognitiveservices.azure.com/.default";
+const responsesPathSuffix = "/responses";
 const toolExecutionTimeoutMs = 20_000;
 
 class OpenAIResponsesClient implements ResponsesClient {
   private readonly client: OpenAI;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(options: OpenAIResponsesClientConfig) {
+    this.client = new OpenAI({
+      apiKey: options.apiKey,
+      ...(options.baseURL ? { baseURL: options.baseURL } : {}),
+    });
+  }
+
+  async create(request: Record<string, unknown>, signal: AbortSignal) {
+    return (await this.client.responses.create(request, {
+      signal,
+    })) as ResponsesApiResponse;
+  }
+}
+
+class AzureOpenAIResponsesClient implements ResponsesClient {
+  private readonly client: AzureOpenAI;
+
+  constructor(options: AzureResponsesClientConfig) {
+    const azureADTokenProvider = getBearerTokenProvider(
+      new AzureCliCredential(),
+      options.tokenScope,
+    );
+    this.client = new AzureOpenAI({
+      apiVersion: options.apiVersion,
+      azureADTokenProvider,
+      ...(options.baseURL ? { baseURL: options.baseURL } : { endpoint: options.endpoint }),
+    });
   }
 
   async create(request: Record<string, unknown>, signal: AbortSignal) {
@@ -231,35 +277,213 @@ function isTestEnvironment(env: NodeJS.ProcessEnv = process.env) {
   return env.NODE_ENV === "test" || env.VITEST === "true";
 }
 
-export function createDefaultResponsesClient(): ResponsesClient | null {
-  const mode = parseResponsesLoopMode();
-  const apiKey = process.env.OPENAI_API_KEY;
+function normalizeEnvValue(value?: string | null) {
+  const normalized = value?.trim();
 
-  if (mode === "fallback") {
+  return normalized ? normalized : undefined;
+}
+
+function isAzureBaseUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+
+    return (
+      hostname.endsWith(".openai.azure.com") ||
+      hostname.endsWith(".cognitiveservices.azure.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function buildAzureConfigurationError(
+  message: string,
+  code: string,
+  hint: string,
+) {
+  return new RunnerCoreError(message, {
+    code,
+    hint,
+    statusCode: 400,
+  });
+}
+
+function normalizeAzureEndpoint(
+  value: string,
+): {
+  apiVersionFromUrl?: string | undefined;
+  baseURL?: string | undefined;
+  endpoint?: string | undefined;
+} | null {
+  try {
+    const parsed = new URL(value);
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    const apiVersionFromUrl = normalizeEnvValue(
+      parsed.searchParams.get("api-version"),
+    );
+
+    if (pathname.endsWith(responsesPathSuffix)) {
+      const basePath = pathname.slice(0, -responsesPathSuffix.length) || "/openai";
+
+      return {
+        apiVersionFromUrl,
+        baseURL: `${parsed.origin}${basePath}`,
+      };
+    }
+
+    if (!pathname) {
+      return {
+        apiVersionFromUrl,
+        endpoint: parsed.origin,
+      };
+    }
+
+    return {
+      apiVersionFromUrl,
+      baseURL: `${parsed.origin}${pathname}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveAzureResponsesClientConfig(
+  env: NodeJS.ProcessEnv,
+  mode: ResponsesLoopMode,
+  openAIBaseURL?: string,
+): AzureResponsesClientConfig | null {
+  const explicitAzureEndpoint =
+    normalizeEnvValue(env.AZURE_OPENAI_RESPONSES_URL) ??
+    normalizeEnvValue(env.AZURE_OPENAI_BASE_URL) ??
+    normalizeEnvValue(env.AZURE_OPENAI_ENDPOINT);
+  const explicitAzureSignal = Boolean(
+    explicitAzureEndpoint ??
+      normalizeEnvValue(env.AZURE_OPENAI_API_VERSION) ??
+      normalizeEnvValue(env.AZURE_OPENAI_SCOPE),
+  );
+  const azureBaseURLCandidate =
+    openAIBaseURL && (explicitAzureSignal || isAzureBaseUrl(openAIBaseURL))
+      ? openAIBaseURL
+      : undefined;
+  const shouldUseAzure = Boolean(explicitAzureEndpoint ?? azureBaseURLCandidate);
+
+  if (!shouldUseAzure) {
     return null;
   }
 
-  if (!apiKey) {
+  const azureEndpointCandidate = explicitAzureEndpoint ?? azureBaseURLCandidate;
+
+  if (!azureEndpointCandidate) {
     if (mode === "live") {
-      throw new RunnerCoreError(
-        "CUA_RESPONSES_MODE=live requires OPENAI_API_KEY to be set.",
-        {
-          code: "missing_api_key",
-          hint:
-            "Set OPENAI_API_KEY before starting a live CUA run, or switch CUA_RESPONSES_MODE back to auto.",
-          statusCode: 400,
-        },
+      throw buildAzureConfigurationError(
+        "Azure live Responses mode requires an Azure endpoint or base URL.",
+        "missing_azure_endpoint",
+        "Set AZURE_OPENAI_ENDPOINT to your Azure resource URL, AZURE_OPENAI_BASE_URL or OPENAI_BASE_URL to an Azure /openai base URL, or AZURE_OPENAI_RESPONSES_URL to the full /openai/responses endpoint.",
       );
     }
 
     return null;
   }
 
-  if (mode === "auto" && isTestEnvironment()) {
+  const normalizedEndpoint = normalizeAzureEndpoint(azureEndpointCandidate);
+
+  if (!normalizedEndpoint) {
+    if (mode === "live") {
+      throw buildAzureConfigurationError(
+        "Azure OpenAI endpoint configuration must be a valid URL.",
+        "invalid_azure_endpoint",
+        "Use an HTTPS Azure resource URL such as https://example.openai.azure.com/ or a full Azure Responses endpoint like https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview.",
+      );
+    }
+
     return null;
   }
 
-  return new OpenAIResponsesClient(apiKey);
+  const apiVersion =
+    normalizeEnvValue(env.AZURE_OPENAI_API_VERSION) ??
+    normalizeEnvValue(env.OPENAI_API_VERSION) ??
+    normalizedEndpoint.apiVersionFromUrl;
+
+  if (!apiVersion) {
+    if (mode === "live") {
+      throw buildAzureConfigurationError(
+        "Azure live Responses mode requires an API version.",
+        "missing_azure_api_version",
+        "Set AZURE_OPENAI_API_VERSION or OPENAI_API_VERSION (for example 2025-04-01-preview).",
+      );
+    }
+
+    return null;
+  }
+
+  return {
+    apiVersion,
+    baseURL: normalizedEndpoint.baseURL,
+    endpoint: normalizedEndpoint.endpoint,
+    provider: "azure",
+    tokenScope:
+      normalizeEnvValue(env.AZURE_OPENAI_SCOPE) ?? defaultAzureOpenAIScope,
+  };
+}
+
+export function resolveDefaultResponsesClientConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): DefaultResponsesClientConfig | null {
+  const mode = parseResponsesLoopMode(env);
+  const apiKey = normalizeEnvValue(env.OPENAI_API_KEY);
+  const openAIBaseURL = normalizeEnvValue(env.OPENAI_BASE_URL);
+
+  if (mode === "fallback") {
+    return null;
+  }
+
+  if (mode === "auto" && isTestEnvironment(env)) {
+    return null;
+  }
+
+  const azureConfig = resolveAzureResponsesClientConfig(
+    env,
+    mode,
+    openAIBaseURL,
+  );
+
+  if (azureConfig) {
+    return azureConfig;
+  }
+
+  if (apiKey) {
+    return {
+      apiKey,
+      baseURL: openAIBaseURL,
+      provider: "openai",
+    };
+  }
+
+  if (mode === "live") {
+    throw new RunnerCoreError(
+      "CUA_RESPONSES_MODE=live requires OPENAI_API_KEY or Azure OpenAI environment settings.",
+      {
+        code: "missing_api_key",
+        hint:
+          "Set OPENAI_API_KEY for the public OpenAI API, or set AZURE_OPENAI_ENDPOINT plus AZURE_OPENAI_API_VERSION for Azure Entra authentication.",
+        statusCode: 400,
+      },
+    );
+  }
+
+  return null;
+}
+
+export function createDefaultResponsesClient(): ResponsesClient | null {
+  const config = resolveDefaultResponsesClientConfig();
+
+  if (!config) {
+    return null;
+  }
+
+  return config.provider === "azure"
+    ? new AzureOpenAIResponsesClient(config)
+    : new OpenAIResponsesClient(config);
 }
 
 function describeUsage(response: ResponsesApiResponse) {

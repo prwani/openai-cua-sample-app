@@ -5,15 +5,20 @@ import { tmpdir } from "node:os";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { RunnerManager } from "../src/index.js";
+import { resolveDefaultResponsesClientConfig } from "../src/responses-loop.js";
 
 const tempRoots: string[] = [];
 
 beforeAll(() => {
   process.env.CUA_RESPONSES_MODE = "live";
-
-  if (!process.env.OPENAI_API_KEY) {
+  try {
+    resolveDefaultResponsesClientConfig();
+  } catch (error) {
     throw new Error(
-      "OPENAI_API_KEY must be set to run packages/runner-core/test/live-responses.smoke.test.ts",
+      "OPENAI_API_KEY or Azure OpenAI environment settings must be set to run packages/runner-core/test/live-responses.smoke.test.ts",
+      {
+        cause: error,
+      },
     );
   }
 });
@@ -86,12 +91,12 @@ describe("live Responses smoke", () => {
         verificationEnabled: true,
       });
 
-      const completed = await waitForTerminalRun(manager, detail.run.id);
+      const completed = await waitForTerminalRun(manager, detail.run.id, 180_000);
 
       expect(completed.run.status).toBe("completed");
       expect(completed.run.summary?.verificationPassed).toBe(true);
     },
-    130_000,
+    190_000,
   );
 
   it(
@@ -100,18 +105,19 @@ describe("live Responses smoke", () => {
       const manager = await createLiveManager();
       const detail = await manager.startRun({
         browserMode: "headless",
+        maxResponseTurns: 40,
         mode: "code",
         prompt: "Paint me a smiley face as simple pixel art and save the draft.",
         scenarioId: "paint-draw-poster",
         verificationEnabled: true,
       });
 
-      const completed = await waitForTerminalRun(manager, detail.run.id);
+      const completed = await waitForTerminalRun(manager, detail.run.id, 240_000);
 
       expect(completed.run.status).toBe("completed");
       expect(completed.run.summary?.verificationPassed).toBe(true);
     },
-    130_000,
+    250_000,
   );
 
   it(
@@ -137,12 +143,12 @@ describe("live Responses smoke", () => {
         verificationEnabled: true,
       });
 
-      const completed = await waitForTerminalRun(manager, detail.run.id);
+      const completed = await waitForTerminalRun(manager, detail.run.id, 180_000);
 
       expect(completed.run.status).toBe("completed");
       expect(completed.run.summary?.verificationPassed).toBe(true);
     },
-    130_000,
+    190_000,
   );
 
 });

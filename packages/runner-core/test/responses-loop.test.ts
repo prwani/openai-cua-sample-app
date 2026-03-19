@@ -3,13 +3,21 @@ import { afterEach, describe, expect, it } from "vitest";
 import { RunnerCoreError } from "../src/errors.js";
 import {
   createDefaultResponsesClient,
+  resolveDefaultResponsesClientConfig,
   runResponsesCodeLoop,
   runResponsesNativeComputerLoop,
 } from "../src/responses-loop.js";
 
 const originalEnv = {
+  AZURE_OPENAI_API_VERSION: process.env.AZURE_OPENAI_API_VERSION,
+  AZURE_OPENAI_BASE_URL: process.env.AZURE_OPENAI_BASE_URL,
+  AZURE_OPENAI_ENDPOINT: process.env.AZURE_OPENAI_ENDPOINT,
+  AZURE_OPENAI_RESPONSES_URL: process.env.AZURE_OPENAI_RESPONSES_URL,
+  AZURE_OPENAI_SCOPE: process.env.AZURE_OPENAI_SCOPE,
   CUA_RESPONSES_MODE: process.env.CUA_RESPONSES_MODE,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  OPENAI_API_VERSION: process.env.OPENAI_API_VERSION,
   VITEST: process.env.VITEST,
 };
 
@@ -25,8 +33,15 @@ function restoreEnvVariable(name: keyof typeof originalEnv) {
 }
 
 afterEach(() => {
+  restoreEnvVariable("AZURE_OPENAI_API_VERSION");
+  restoreEnvVariable("AZURE_OPENAI_BASE_URL");
+  restoreEnvVariable("AZURE_OPENAI_ENDPOINT");
+  restoreEnvVariable("AZURE_OPENAI_RESPONSES_URL");
+  restoreEnvVariable("AZURE_OPENAI_SCOPE");
   restoreEnvVariable("CUA_RESPONSES_MODE");
   restoreEnvVariable("OPENAI_API_KEY");
+  restoreEnvVariable("OPENAI_BASE_URL");
+  restoreEnvVariable("OPENAI_API_VERSION");
   restoreEnvVariable("VITEST");
 });
 
@@ -93,7 +108,31 @@ function createMockExecutionContext() {
   };
 }
 
-describe("createDefaultResponsesClient", () => {
+function createConfigEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return {
+    CUA_RESPONSES_MODE: "live",
+    NODE_ENV: "production",
+    VITEST: "false",
+    ...overrides,
+  };
+}
+
+function expectRunnerCoreError(
+  callback: () => unknown,
+  expected: Record<string, unknown>,
+) {
+  try {
+    callback();
+  } catch (error) {
+    expect(error).toBeInstanceOf(RunnerCoreError);
+    expect(error).toMatchObject(expected);
+    return;
+  }
+
+  throw new Error("Expected RunnerCoreError to be thrown.");
+}
+
+describe("default responses client configuration", () => {
   it("returns null in test mode even when an API key exists", () => {
     process.env.CUA_RESPONSES_MODE = "auto";
     process.env.OPENAI_API_KEY = "test-key";
@@ -102,22 +141,173 @@ describe("createDefaultResponsesClient", () => {
     expect(createDefaultResponsesClient()).toBeNull();
   });
 
+  it("returns null in auto mode when NODE_ENV is test", () => {
+    expect(
+      resolveDefaultResponsesClientConfig(
+        createConfigEnv({
+          AZURE_OPENAI_API_VERSION: "2025-04-01-preview",
+          AZURE_OPENAI_ENDPOINT: "https://pw-sc-foundry.openai.azure.com/",
+          CUA_RESPONSES_MODE: "auto",
+          NODE_ENV: "test",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("preserves the OpenAI API key path when Azure settings are absent", () => {
+    expect(
+      resolveDefaultResponsesClientConfig(
+        createConfigEnv({
+          OPENAI_API_KEY: "test-key",
+          OPENAI_BASE_URL: "https://api.openai.example/v1",
+        }),
+      ),
+    ).toEqual({
+      apiKey: "test-key",
+      baseURL: "https://api.openai.example/v1",
+      provider: "openai",
+    });
+  });
+
+  it("selects Azure when OPENAI_BASE_URL targets an Azure /openai base URL", () => {
+    expect(
+      resolveDefaultResponsesClientConfig(
+        createConfigEnv({
+          OPENAI_API_VERSION: "2025-04-01-preview",
+          OPENAI_BASE_URL: "https://pw-sc-foundry.cognitiveservices.azure.com/openai",
+        }),
+      ),
+    ).toMatchObject({
+      apiVersion: "2025-04-01-preview",
+      baseURL: "https://pw-sc-foundry.cognitiveservices.azure.com/openai",
+      provider: "azure",
+      tokenScope: "https://cognitiveservices.azure.com/.default",
+    });
+  });
+
+  it("prefers Azure config over OPENAI_API_KEY when Azure settings are present", () => {
+    expect(
+      resolveDefaultResponsesClientConfig(
+        createConfigEnv({
+          AZURE_OPENAI_ENDPOINT: "https://pw-sc-foundry.openai.azure.com/",
+          OPENAI_API_KEY: "test-key",
+          OPENAI_API_VERSION: "2025-04-01-preview",
+        }),
+      ),
+    ).toMatchObject({
+      apiVersion: "2025-04-01-preview",
+      endpoint: "https://pw-sc-foundry.openai.azure.com",
+      provider: "azure",
+      tokenScope: "https://cognitiveservices.azure.com/.default",
+    });
+  });
+
   it("throws a structured missing-api-key error when live mode is forced", () => {
     process.env.CUA_RESPONSES_MODE = "live";
-    delete process.env.OPENAI_API_KEY;
     process.env.VITEST = "false";
+    delete process.env.AZURE_OPENAI_API_VERSION;
+    delete process.env.AZURE_OPENAI_BASE_URL;
+    delete process.env.AZURE_OPENAI_ENDPOINT;
+    delete process.env.AZURE_OPENAI_RESPONSES_URL;
+    delete process.env.AZURE_OPENAI_SCOPE;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_API_VERSION;
+    delete process.env.OPENAI_BASE_URL;
 
-    try {
-      createDefaultResponsesClient();
-      throw new Error("Expected createDefaultResponsesClient() to throw.");
-    } catch (error) {
-      expect(error).toBeInstanceOf(RunnerCoreError);
-      expect(error).toMatchObject({
-        code: "missing_api_key",
-        hint: expect.stringContaining("Set OPENAI_API_KEY"),
-        message: "CUA_RESPONSES_MODE=live requires OPENAI_API_KEY to be set.",
-      });
-    }
+    expectRunnerCoreError(() => createDefaultResponsesClient(), {
+      code: "missing_api_key",
+      hint: expect.stringContaining("Set OPENAI_API_KEY"),
+      message:
+        "CUA_RESPONSES_MODE=live requires OPENAI_API_KEY or Azure OpenAI environment settings.",
+    });
+  });
+
+  it("throws a structured invalid-azure-endpoint error when live mode receives a bad Azure URL", () => {
+    expectRunnerCoreError(
+      () =>
+        resolveDefaultResponsesClientConfig(
+          createConfigEnv({
+            AZURE_OPENAI_ENDPOINT: "not-a-url",
+          }),
+        ),
+      {
+        code: "invalid_azure_endpoint",
+        hint: expect.stringContaining("Use an HTTPS Azure resource URL"),
+        message: "Azure OpenAI endpoint configuration must be a valid URL.",
+      },
+    );
+  });
+
+  it("throws a structured missing-azure-api-version error when live mode has Azure config without a version", () => {
+    expectRunnerCoreError(
+      () =>
+        resolveDefaultResponsesClientConfig(
+          createConfigEnv({
+            AZURE_OPENAI_ENDPOINT: "https://pw-sc-foundry.openai.azure.com/",
+          }),
+        ),
+      {
+        code: "missing_azure_api_version",
+        hint: expect.stringContaining(
+          "Set AZURE_OPENAI_API_VERSION or OPENAI_API_VERSION",
+        ),
+        message: "Azure live Responses mode requires an API version.",
+      },
+    );
+  });
+
+  it("resolves Azure Entra config from a resource endpoint without an API key", () => {
+    process.env.CUA_RESPONSES_MODE = "live";
+    process.env.AZURE_OPENAI_ENDPOINT = "https://pw-sc-foundry.openai.azure.com/";
+    process.env.AZURE_OPENAI_API_VERSION = "2025-04-01-preview";
+    process.env.VITEST = "false";
+    delete process.env.OPENAI_API_KEY;
+
+    expect(resolveDefaultResponsesClientConfig()).toMatchObject({
+      apiVersion: "2025-04-01-preview",
+      endpoint: "https://pw-sc-foundry.openai.azure.com",
+      provider: "azure",
+      tokenScope: "https://cognitiveservices.azure.com/.default",
+    });
+  });
+
+  it("normalizes a full Azure Responses URL into an Azure base URL", () => {
+    process.env.CUA_RESPONSES_MODE = "live";
+    process.env.AZURE_OPENAI_RESPONSES_URL =
+      "https://pw-sc-foundry.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview";
+    process.env.VITEST = "false";
+    delete process.env.OPENAI_API_KEY;
+
+    expect(resolveDefaultResponsesClientConfig()).toMatchObject({
+      apiVersion: "2025-04-01-preview",
+      baseURL: "https://pw-sc-foundry.cognitiveservices.azure.com/openai",
+      provider: "azure",
+    });
+  });
+
+  it("creates a live Azure client when Entra configuration is present", () => {
+    process.env.CUA_RESPONSES_MODE = "live";
+    process.env.AZURE_OPENAI_ENDPOINT = "https://pw-sc-foundry.openai.azure.com/";
+    process.env.AZURE_OPENAI_API_VERSION = "2025-04-01-preview";
+    process.env.VITEST = "false";
+    delete process.env.OPENAI_API_KEY;
+
+    expect(createDefaultResponsesClient()).not.toBeNull();
+  });
+
+  it("creates a live OpenAI client when OPENAI_API_KEY is present", () => {
+    process.env.CUA_RESPONSES_MODE = "live";
+    process.env.OPENAI_API_KEY = "test-key";
+    process.env.OPENAI_BASE_URL = "https://api.openai.example/v1";
+    process.env.VITEST = "false";
+    delete process.env.AZURE_OPENAI_API_VERSION;
+    delete process.env.AZURE_OPENAI_BASE_URL;
+    delete process.env.AZURE_OPENAI_ENDPOINT;
+    delete process.env.AZURE_OPENAI_RESPONSES_URL;
+    delete process.env.AZURE_OPENAI_SCOPE;
+    delete process.env.OPENAI_API_VERSION;
+
+    expect(createDefaultResponsesClient()).not.toBeNull();
   });
 });
 

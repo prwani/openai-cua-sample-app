@@ -43,4 +43,4 @@ pnpm test
 pnpm build
 ```
 
-Use `pnpm test:live` only when you have an `OPENAI_API_KEY` and want the live Responses API smoke tests.
+Use `pnpm test:live` only when you either have an `OPENAI_API_KEY`, or have run `az login` and set `AZURE_OPENAI_ENDPOINT` plus `AZURE_OPENAI_API_VERSION`, and want the live Responses API smoke tests.

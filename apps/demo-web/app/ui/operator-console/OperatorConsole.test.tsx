@@ -80,7 +80,7 @@ describe("OperatorConsole", () => {
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByText(
-        /Start `pnpm dev` or `OPENAI_API_KEY=... pnpm dev:runner`/,
+        /Start `pnpm dev`, or run `pnpm dev:runner` with `OPENAI_API_KEY`, or after `az login` with `AZURE_OPENAI_ENDPOINT` plus `AZURE_OPENAI_API_VERSION`/,
       ).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Runner Offline")).toBeTruthy();
@@ -93,8 +93,10 @@ describe("OperatorConsole", () => {
     fetchMock.mockResolvedValue({
       json: async () => ({
         code: "missing_api_key",
-        error: "OPENAI_API_KEY is not configured in the runner.",
-        hint: "Set OPENAI_API_KEY and restart the runner.",
+        error:
+          "CUA_RESPONSES_MODE=live requires OPENAI_API_KEY or Azure OpenAI environment settings.",
+        hint:
+          "Set OPENAI_API_KEY for the public OpenAI API, or set AZURE_OPENAI_ENDPOINT plus AZURE_OPENAI_API_VERSION for Azure Entra authentication.",
       }),
       ok: false,
       status: 400,
@@ -111,11 +113,11 @@ describe("OperatorConsole", () => {
     await user.click(screen.getByRole("button", { name: "Start Run" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Runner missing API key")).toBeTruthy();
+      expect(screen.getByText("Runner missing model configuration")).toBeTruthy();
     });
     expect(
       screen.getAllByText(
-        /OPENAI_API_KEY is not configured in the runner\. Set OPENAI_API_KEY and restart the runner\./,
+        /CUA_RESPONSES_MODE=live requires OPENAI_API_KEY or Azure OpenAI environment settings\. Set OPENAI_API_KEY for the public OpenAI API, or set AZURE_OPENAI_ENDPOINT plus AZURE_OPENAI_API_VERSION for Azure Entra authentication\./,
       ).length,
     ).toBeGreaterThan(0);
   });

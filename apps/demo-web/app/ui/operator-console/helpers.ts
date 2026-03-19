@@ -29,14 +29,14 @@ export const turnBudgetHelpText =
 export const verificationHelpText =
   "Runs the scenario's built-in checks after the model stops. Leave this off to treat the model's completed action loop as the success condition.";
 export const runnerUnavailableHint =
-  "Start `pnpm dev` or `OPENAI_API_KEY=... pnpm dev:runner`, then refresh the page.";
+  "Start `pnpm dev`, or run `pnpm dev:runner` with `OPENAI_API_KEY`, or after `az login` with `AZURE_OPENAI_ENDPOINT` plus `AZURE_OPENAI_API_VERSION`, then refresh the page.";
 
 function titleForIssueCode(code: string) {
   switch (code) {
     case "runner_unavailable":
       return "Runner unavailable";
     case "missing_api_key":
-      return "Runner missing API key";
+      return "Runner missing model configuration";
     case "live_mode_unavailable":
       return "Live mode unavailable";
     case "unsupported_safety_acknowledgement":

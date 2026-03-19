@@ -229,7 +229,7 @@ export function createLiveResponsesUnavailableError(message: string) {
   return new RunnerCoreError(message, {
     code: "live_mode_unavailable",
     hint:
-      "Set OPENAI_API_KEY in the runner environment, then rerun the scenario in code or native mode.",
+      "Set OPENAI_API_KEY for public OpenAI access, or set AZURE_OPENAI_ENDPOINT plus AZURE_OPENAI_API_VERSION for Azure Entra access, then rerun the scenario in code or native mode.",
     statusCode: 400,
   });
 }
