@@ -8,6 +8,7 @@ import {
 
 import { bookingDefaultPrompt } from "./booking.js";
 import { kanbanDefaultPrompt } from "./kanban.js";
+import { openWebDefaultPrompt } from "./open-web.js";
 import { paintDefaultPrompt } from "./paint.js";
 
 const templatePath = (labDirectory: string) =>
@@ -29,6 +30,7 @@ const scenarioCatalog = scenarioManifestSchema.array().parse([
       url: "http://127.0.0.1:3102",
     },
     defaultMode: "code",
+    requiresStartUrl: false,
     supportsCodeEdits: false,
     verification: [
       {
@@ -55,6 +57,7 @@ const scenarioCatalog = scenarioManifestSchema.array().parse([
       url: "http://127.0.0.1:3103",
     },
     defaultMode: "code",
+    requiresStartUrl: false,
     supportsCodeEdits: false,
     verification: [
       {
@@ -81,6 +84,7 @@ const scenarioCatalog = scenarioManifestSchema.array().parse([
       url: "http://127.0.0.1:3104",
     },
     defaultMode: "code",
+    requiresStartUrl: false,
     supportsCodeEdits: false,
     verification: [
       {
@@ -91,6 +95,26 @@ const scenarioCatalog = scenarioManifestSchema.array().parse([
       },
     ],
     tags: ["hero", "commerce", "forms"],
+  },
+  {
+    id: "open-web-task",
+    labId: "open_web",
+    category: "general",
+    title: "Open Web Task",
+    description:
+      "Launch an operator-supplied URL and complete a one-off browser task using only the operator prompt and live page state.",
+    defaultPrompt: openWebDefaultPrompt,
+    workspaceTemplatePath: templatePath("open-web-template"),
+    startTarget: {
+      kind: "remote_url",
+      label: "operator-supplied URL",
+      url: "https://example.com/",
+    },
+    defaultMode: "code",
+    requiresStartUrl: true,
+    supportsCodeEdits: false,
+    verification: [],
+    tags: ["browser", "general", "custom"],
   },
 ]);
 

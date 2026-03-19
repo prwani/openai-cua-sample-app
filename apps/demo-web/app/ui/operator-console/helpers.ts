@@ -124,6 +124,10 @@ export function scenarioTargetDisplay(scenario: ScenarioManifest | null) {
     return "Runner unavailable";
   }
 
+  if (scenario.requiresStartUrl && scenario.startTarget.kind === "remote_url") {
+    return scenario.startTarget.label ?? "Operator-supplied URL";
+  }
+
   return scenario.startTarget.kind === "remote_url"
     ? scenario.startTarget.url
     : scenario.startTarget.path;

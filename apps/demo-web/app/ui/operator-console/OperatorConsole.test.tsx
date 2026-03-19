@@ -22,6 +22,7 @@ const scenario: ScenarioManifest = {
     "Move cards across columns and reorder the sprint board to match the final board state.",
   id: "kanban-reprioritize-sprint",
   labId: "kanban",
+  requiresStartUrl: false,
   startTarget: {
     kind: "remote_url",
     label: "run-scoped HTTP kanban lab",
@@ -38,6 +39,28 @@ const scenario: ScenarioManifest = {
     },
   ],
   workspaceTemplatePath: "/tmp/kanban-lab-template",
+};
+
+const openWebScenario: ScenarioManifest = {
+  category: "general",
+  defaultMode: "code",
+  defaultPrompt:
+    "Complete a browser task using the loaded website as your starting point.",
+  description:
+    "Launch an operator-supplied URL and complete a one-off browser task.",
+  id: "open-web-task",
+  labId: "open_web",
+  requiresStartUrl: true,
+  startTarget: {
+    kind: "remote_url",
+    label: "operator-supplied URL",
+    url: "https://example.com/",
+  },
+  supportsCodeEdits: false,
+  tags: ["browser", "general", "custom"],
+  title: "Open Web Task",
+  verification: [],
+  workspaceTemplatePath: "/tmp/open-web-template",
 };
 
 class MockEventSource {
@@ -120,5 +143,83 @@ describe("OperatorConsole", () => {
         /CUA_RESPONSES_MODE=live requires OPENAI_API_KEY or Azure OpenAI environment settings\. Set OPENAI_API_KEY for the public OpenAI API, or set AZURE_OPENAI_ENDPOINT plus AZURE_OPENAI_API_VERSION for Azure Entra authentication\./,
       ).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("collects the start URL for the open web task and includes it in the run request", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.mocked(fetch);
+    const startedAt = "2026-03-19T09:00:00.000Z";
+
+    fetchMock
+      .mockResolvedValueOnce({
+        json: async () => ({
+          eventStreamUrl: "/api/runs/run-open-web/events",
+          replayUrl: "/api/runs/run-open-web/replay",
+          runId: "run-open-web",
+          status: "running",
+        }),
+        ok: true,
+        status: 202,
+      } as Response)
+      .mockResolvedValueOnce({
+        json: async () => ({
+          browser: undefined,
+          eventStreamUrl: "/api/runs/run-open-web/events",
+          events: [],
+          replayUrl: "/api/runs/run-open-web/replay",
+          run: {
+            browserMode: "headless",
+            id: "run-open-web",
+            labId: "open_web",
+            mode: "code",
+            model: "gpt-5.4",
+            prompt: openWebScenario.defaultPrompt,
+            scenarioId: "open-web-task",
+            startUrl: "https://www.bing.com/",
+            startedAt,
+            status: "running",
+            verificationEnabled: false,
+          },
+          scenario: openWebScenario,
+          workspacePath: "/tmp/open-web-run",
+        }),
+        ok: true,
+        status: 200,
+      } as Response);
+
+    render(
+      <OperatorConsole
+        initialRunnerIssue={null}
+        runnerBaseUrl="http://127.0.0.1:4001"
+        scenarios={[openWebScenario]}
+      />,
+    );
+
+    const startButton = screen.getByRole("button", { name: "Start Run" });
+
+    expect((screen.getByLabelText("Manual review only") as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect((startButton as HTMLButtonElement).disabled).toBe(true);
+
+    await user.type(screen.getByLabelText("Start URL"), "https://www.bing.com");
+
+    expect((startButton as HTMLButtonElement).disabled).toBe(false);
+
+    await user.click(startButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    const request = fetchMock.mock.calls[0];
+    const payload = JSON.parse(String(request?.[1]?.body)) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      prompt: openWebScenario.defaultPrompt,
+      scenarioId: "open-web-task",
+      startUrl: "https://www.bing.com",
+      verificationEnabled: false,
+    });
   });
 });

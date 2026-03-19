@@ -72,6 +72,30 @@ const defaultStepDelayMs = 650;
 const defaultRunModel = process.env.CUA_DEFAULT_MODEL ?? "gpt-5.4";
 const defaultMaxResponseTurns = 24;
 
+function normalizeStartUrl(startUrl: string) {
+  let normalized: URL;
+
+  try {
+    normalized = new URL(startUrl.trim());
+  } catch {
+    throw new RunnerCoreError("The start URL must be a valid absolute URL.", {
+      code: "invalid_start_url",
+      hint: "Use an absolute http:// or https:// URL for Open Web Task.",
+      statusCode: 400,
+    });
+  }
+
+  if (normalized.protocol !== "http:" && normalized.protocol !== "https:") {
+    throw new RunnerCoreError("The start URL must use http or https.", {
+      code: "unsupported_start_url_scheme",
+      hint: "Use an absolute http:// or https:// URL for Open Web Task.",
+      statusCode: 400,
+    });
+  }
+
+  return normalized.toString();
+}
+
 function sleep(ms: number) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -106,6 +130,40 @@ export class RunnerManager {
       });
     }
 
+    const startUrl = scenario.requiresStartUrl
+      ? request.startUrl
+        ? normalizeStartUrl(request.startUrl)
+        : (() => {
+            throw new RunnerCoreError("Open Web Task requires a start URL.", {
+              code: "missing_start_url",
+              hint: "Provide startUrl when starting the Open Web Task scenario.",
+              statusCode: 400,
+            });
+          })()
+      : undefined;
+
+    if (!scenario.requiresStartUrl && request.startUrl) {
+      throw new RunnerCoreError(
+        `Scenario ${scenario.id} does not accept a custom start URL.`,
+        {
+          code: "unexpected_start_url",
+          hint: "Only Open Web Task accepts startUrl in POST /api/runs.",
+          statusCode: 400,
+        },
+      );
+    }
+
+    if (request.verificationEnabled && scenario.verification.length === 0) {
+      throw new RunnerCoreError(
+        `Scenario ${scenario.id} does not provide automated verification.`,
+        {
+          code: "verification_unavailable",
+          hint: "Disable verification for this scenario and rely on screenshots plus replay output.",
+          statusCode: 400,
+        },
+      );
+    }
+
     const activeRun = this.getActiveRun();
 
     if (activeRun) {
@@ -131,9 +189,13 @@ export class RunnerManager {
       model: request.model ?? defaultRunModel,
       prompt: request.prompt,
       scenarioId: scenario.id,
+      startUrl,
       startedAt,
       status: "running",
-      verificationEnabled: request.verificationEnabled ?? false,
+      verificationEnabled:
+        scenario.verification.length > 0
+          ? request.verificationEnabled ?? false
+          : false,
     });
 
     await this.ensureBaseDirectories();

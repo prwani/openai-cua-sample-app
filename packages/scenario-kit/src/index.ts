@@ -6,6 +6,7 @@ export {
 } from "./scenarios.js";
 export { bookingDefaultPrompt } from "./booking.js";
 export { kanbanDefaultPrompt, type KanbanBoardState } from "./kanban.js";
+export { openWebDefaultPrompt } from "./open-web.js";
 export {
   paintDefaultPrompt,
   type PaintCellColor,

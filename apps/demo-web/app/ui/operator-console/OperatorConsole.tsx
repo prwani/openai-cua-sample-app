@@ -38,6 +38,7 @@ export function OperatorConsole({
     prompt,
     runnerOnline,
     screenshots,
+    startUrl,
     selectedBrowser,
     selectedRun,
     selectedScenario,
@@ -48,6 +49,7 @@ export function OperatorConsole({
     setMaxResponseTurns,
     setMode,
     setPrompt,
+    setStartUrl,
     setStreamLogs,
     setVerificationEnabled,
     streamLogs,
@@ -60,23 +62,32 @@ export function OperatorConsole({
   });
 
   const selectedScenarioTitle = selectedScenario?.title ?? "Selected app";
+  const selectedScenarioRequiresStartUrl = selectedScenario?.requiresStartUrl ?? false;
+  const verificationAvailable = (selectedScenario?.verification.length ?? 0) > 0;
   const stageUrl =
     selectedBrowser?.currentUrl ??
+    selectedRun?.run.startUrl ??
     (selectedRun
       ? scenarioTargetDisplay(selectedScenario)
-      : "Awaiting app launch");
+      : selectedScenarioRequiresStartUrl
+        ? startUrl.trim() || scenarioTargetDisplay(selectedScenario)
+        : "Awaiting app launch");
   const startDisabled =
     !runnerOnline ||
     !selectedScenario ||
     pendingAction !== null ||
     controlsLocked ||
-    prompt.trim().length === 0;
+    prompt.trim().length === 0 ||
+    (selectedScenarioRequiresStartUrl && startUrl.trim().length === 0);
   const stopDisabled =
     !selectedRun ||
     selectedRun.run.status !== "running" ||
     pendingAction !== null;
   const resetDisabled =
-    !runnerOnline || !selectedScenario || pendingAction === "start";
+    !runnerOnline ||
+    !selectedScenario ||
+    pendingAction === "start" ||
+    selectedScenarioRequiresStartUrl;
   const replayDisabled = !selectedRun;
   const issueMessage = currentIssue ? formatRunnerIssueMessage(currentIssue) : null;
   const stageHeadline = selectedRun
@@ -105,7 +116,9 @@ export function OperatorConsole({
       : currentIssue
         ? issueMessage
         : runnerOnline
-        ? "Start a run to open the selected lab and stream activity into this console."
+        ? selectedScenarioRequiresStartUrl
+          ? "Start a run to open the supplied URL and stream activity into this console."
+          : "Start a run to open the selected lab and stream activity into this console."
         : issueMessage;
   const topbarSubtitle = selectedRun
     ? `Reviewing ${selectedScenarioTitle}`
@@ -152,6 +165,7 @@ export function OperatorConsole({
               onPromptChange={setPrompt}
               onResetWorkspace={handleResetWorkspace}
               onScenarioChange={handleScenarioChange}
+              onStartUrlChange={setStartUrl}
               onStartRun={handleStartRun}
               onStopRun={handleStopRun}
               onVerificationEnabledChange={setVerificationEnabled}
@@ -161,8 +175,11 @@ export function OperatorConsole({
               scenarios={scenarios}
               selectedScenarioId={selectedScenarioId}
               showActionButtons={false}
+              showStartUrlField={selectedScenarioRequiresStartUrl}
               startDisabled={startDisabled}
+              startUrl={startUrl}
               stopDisabled={stopDisabled}
+              verificationAvailable={verificationAvailable}
               verificationEnabled={verificationEnabled}
             />
 

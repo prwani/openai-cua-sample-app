@@ -33,6 +33,39 @@ async function createManager(stepDelayMs = 10) {
 }
 
 describe("RunnerManager", () => {
+  it("requires a start URL for the open web task", async () => {
+    const { manager } = await createManager(5);
+
+    await expect(
+      manager.startRun({
+        browserMode: "headless",
+        mode: "code",
+        prompt: "Find the current USD/INR exchange rate and stop on the results page.",
+        scenarioId: "open-web-task",
+      }),
+    ).rejects.toMatchObject({
+      code: "missing_start_url",
+      statusCode: 400,
+    });
+  });
+
+  it("rejects custom start URLs for local lab scenarios", async () => {
+    const { manager } = await createManager(5);
+
+    await expect(
+      manager.startRun({
+        browserMode: "headless",
+        mode: "code",
+        prompt: "Paint me a smiley face as simple pixel art and save the draft.",
+        scenarioId: "paint-draw-poster",
+        startUrl: "https://www.bing.com/",
+      }),
+    ).rejects.toMatchObject({
+      code: "unexpected_start_url",
+      statusCode: 400,
+    });
+  });
+
   it("fails the kanban native executor honestly when live Responses is unavailable", async () => {
     const { manager } = await createManager(5);
 
@@ -109,6 +142,31 @@ describe("RunnerManager", () => {
 
     const failed = await manager.waitForRunStatus(detail.run.id, "failed");
 
+    expect(failed.run.status).toBe("failed");
+    expect(
+      failed.events.some(
+        (event: RunEvent) =>
+          event.type === "run_failed" &&
+          event.message.includes("live Responses API"),
+      ),
+    ).toBe(true);
+  });
+
+  it("fails the open web native executor honestly when live Responses is unavailable", async () => {
+    const { manager } = await createManager(5);
+
+    const detail = await manager.startRun({
+      browserMode: "headless",
+      maxResponseTurns: 18,
+      mode: "native",
+      prompt: "Find the current USD/INR exchange rate and stop on the results page.",
+      scenarioId: "open-web-task",
+      startUrl: "https://www.bing.com/",
+    });
+
+    const failed = await manager.waitForRunStatus(detail.run.id, "failed");
+
+    expect(failed.run.startUrl).toBe("https://www.bing.com/");
     expect(failed.run.status).toBe("failed");
     expect(
       failed.events.some(

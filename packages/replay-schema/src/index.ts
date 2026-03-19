@@ -1,9 +1,14 @@
 import { z } from "zod";
 
-export const labIdSchema = z.enum(["kanban", "paint", "booking"]);
+export const labIdSchema = z.enum(["kanban", "paint", "booking", "open_web"]);
 export type LabId = z.infer<typeof labIdSchema>;
 
-export const categorySchema = z.enum(["productivity", "creativity", "commerce"]);
+export const categorySchema = z.enum([
+  "productivity",
+  "creativity",
+  "commerce",
+  "general",
+]);
 export type ScenarioCategory = z.infer<typeof categorySchema>;
 
 export const executionModeSchema = z.enum(["code", "native"]);
@@ -53,8 +58,9 @@ export const scenarioManifestSchema = z.object({
   workspaceTemplatePath: z.string().min(1),
   startTarget: startTargetSchema,
   defaultMode: executionModeSchema,
+  requiresStartUrl: z.boolean(),
   supportsCodeEdits: z.boolean(),
-  verification: z.array(verificationSpecSchema).min(1),
+  verification: z.array(verificationSpecSchema),
   tags: z.array(z.string().min(1)).min(1),
 });
 export type ScenarioManifest = z.infer<typeof scenarioManifestSchema>;
@@ -127,6 +133,7 @@ export const runRecordSchema = z.object({
   model: z.string().min(1),
   maxResponseTurns: responseTurnBudgetSchema.optional(),
   prompt: z.string().min(1),
+  startUrl: z.string().url().optional(),
   status: runStatusSchema,
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime().optional(),
@@ -172,6 +179,7 @@ export const startRunRequestSchema = z.object({
   verificationEnabled: z.boolean().optional(),
   maxResponseTurns: responseTurnBudgetSchema.optional(),
   prompt: z.string().min(1),
+  startUrl: z.string().trim().url().optional(),
   model: z.string().min(1).optional(),
 });
 export type StartRunRequest = z.infer<typeof startRunRequestSchema>;

@@ -10,15 +10,20 @@ describe("scenario registry", () => {
   it("loads only the prompt-driven scenarios that are still enabled", () => {
     const scenarios = listScenarios();
 
-    expect(scenarios).toHaveLength(3);
+    expect(scenarios).toHaveLength(4);
     expect(new Set(scenarios.map((scenario) => scenario.labId))).toEqual(
-      new Set(["kanban", "paint", "booking"]),
+      new Set(["kanban", "paint", "booking", "open_web"]),
     );
 
     for (const scenario of scenarios) {
       expect(() => scenarioManifestSchema.parse(scenario)).not.toThrow();
       expect(existsSync(scenario.workspaceTemplatePath)).toBe(true);
     }
+
+    expect(scenarios.find((scenario) => scenario.id === "open-web-task")).toMatchObject({
+      requiresStartUrl: true,
+      verification: [],
+    });
   });
 
   it("uses the expected default mode for each lab", () => {
@@ -26,6 +31,7 @@ describe("scenario registry", () => {
       ["kanban", "code"],
       ["paint", "code"],
       ["booking", "code"],
+      ["open_web", "code"],
     ]);
 
     for (const scenario of listScenarios()) {

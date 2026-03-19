@@ -18,11 +18,12 @@ If an HTTP route or UI state is public, its shape should be defined here first.
 
 ### `packages/scenario-kit`
 
-Scenario manifests and default prompts for the three public labs:
+Scenario manifests and default prompts for the four public scenarios:
 
 - kanban
 - paint
 - booking
+- open web task
 
 This package is the public scenario registry. Adding a new scenario starts here.
 
@@ -79,13 +80,13 @@ The UI is split into a hook (`useRunStream`) plus focused presentational compone
 1. The operator console requests the public scenario registry from the runner.
 2. Starting a run asks `RunnerManager` to create a mutable workspace and replay bundle.
 3. `RunnerManager` selects a scenario executor through `executor-registry.ts`.
-4. The executor launches the lab and hands control to `responses-loop.ts`.
+4. The executor launches the local lab or operator-supplied URL and hands control to `responses-loop.ts`.
 5. The loop emits events, screenshots, and final verification results back into the replay bundle.
 6. The web app reads the run detail and follows SSE updates until the run finishes.
 
 ## Extensibility
 
-The public branch intentionally exposes only three scenarios, but the architecture is meant to be forked:
+The public branch intentionally exposes four scenarios, but the architecture is still meant to be forked:
 
 - add a manifest in `scenario-kit`
 - add a verifier and instructions in `runner-core`

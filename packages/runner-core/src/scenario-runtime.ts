@@ -54,6 +54,10 @@ export type WorkspaceLabExecutionResult = {
   verificationMessage: string;
 };
 
+type RemoteBrowserExecutionResult = {
+  notes: string[];
+};
+
 type WorkspaceLabFlowOptions = {
   assertOutcome: (session: WorkspaceLabSession) => Promise<void>;
   buildVerificationDetail: (session: WorkspaceLabSession) => Promise<string>;
@@ -222,6 +226,78 @@ export async function runWorkspaceLabBrowserFlow(
   } finally {
     await session.close();
     await labServer.close();
+  }
+}
+
+function getRequiredStartUrl(context: RunExecutionContext) {
+  const startUrl = context.detail.run.startUrl?.trim();
+
+  if (startUrl) {
+    return startUrl;
+  }
+
+  throw new RunnerCoreError("Open Web Task requires a start URL.", {
+    code: "missing_start_url",
+    hint: "Provide startUrl when starting the Open Web Task scenario.",
+    statusCode: 400,
+  });
+}
+
+export async function runRemoteBrowserFlow(
+  context: RunExecutionContext,
+  options: {
+    completedScreenshotLabel: string;
+    loadedScreenshotLabel: string;
+    navigationMessage: string;
+    runner: (input: {
+      session: WorkspaceLabSession;
+      startUrl: string;
+    }) => Promise<RemoteBrowserExecutionResult>;
+    sessionLabel: string;
+  },
+) {
+  const startUrl = getRequiredStartUrl(context);
+  const session = await launchBrowserSession({
+    browserMode: context.detail.run.browserMode,
+    screenshotDir: context.screenshotDirectory,
+    startTarget: {
+      kind: "remote_url",
+      label: options.sessionLabel,
+      url: startUrl,
+    },
+    workspacePath: context.detail.workspacePath,
+  });
+
+  try {
+    assertActive(context.signal);
+    await context.syncBrowserState(session);
+    await context.emitEvent({
+      detail: session.targetLabel,
+      level: "ok",
+      message: "Browser session launched and bound to the run.",
+      type: "browser_session_started",
+    });
+    await context.emitEvent({
+      detail: (await session.readState()).currentUrl,
+      level: "ok",
+      message: options.navigationMessage,
+      type: "browser_navigated",
+    });
+    await context.captureScreenshot(session, options.loadedScreenshotLabel);
+
+    const result = await options.runner({ session, startUrl });
+    await context.captureScreenshot(session, options.completedScreenshotLabel);
+    await maybeHoldHeadfulBrowserOpen(context);
+    await context.completeRun({
+      notes: [
+        ...result.notes,
+        "No deterministic verification is available for this scenario.",
+      ],
+      outcome: "success",
+      verificationPassed: false,
+    });
+  } finally {
+    await session.close();
   }
 }
 

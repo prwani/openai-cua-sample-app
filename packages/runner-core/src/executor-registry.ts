@@ -3,6 +3,7 @@ import { type RunDetail } from "@cua-sample/replay-schema";
 import { createUnsupportedScenarioError, type RunExecutor } from "./scenario-runtime.js";
 import { createBookingExecutor } from "./scenarios/booking.js";
 import { createKanbanExecutor } from "./scenarios/kanban.js";
+import { createOpenWebExecutor } from "./scenarios/open-web.js";
 import { createPaintExecutor } from "./scenarios/paint.js";
 
 export function createDefaultRunExecutor(detail: RunDetail): RunExecutor {
@@ -13,6 +14,8 @@ export function createDefaultRunExecutor(detail: RunDetail): RunExecutor {
       return createPaintExecutor(detail.run.mode);
     case "booking-complete-reservation":
       return createBookingExecutor(detail.run.mode);
+    case "open-web-task":
+      return createOpenWebExecutor(detail.run.mode);
     default:
       throw createUnsupportedScenarioError(detail.scenario.id);
   }

@@ -25,11 +25,15 @@ type RunControlsProps = ActionButtonsProps & {
   onModeChange: (value: ExecutionMode) => void;
   onPromptChange: (value: string) => void;
   onScenarioChange: (value: string) => void;
+  onStartUrlChange: (value: string) => void;
   onVerificationEnabledChange: (value: boolean) => void;
   prompt: string;
   scenarios: ScenarioManifest[];
   selectedScenarioId: string;
   showActionButtons?: boolean;
+  showStartUrlField: boolean;
+  startUrl: string;
+  verificationAvailable: boolean;
   verificationEnabled: boolean;
 };
 
@@ -137,14 +141,22 @@ export function RunControls({
   onModeChange,
   onPromptChange,
   onScenarioChange,
+  onStartUrlChange,
   onVerificationEnabledChange,
   prompt,
   scenarios,
   selectedScenarioId,
   showActionButtons = true,
+  showStartUrlField,
+  startUrl,
+  verificationAvailable,
   verificationEnabled,
   ...actionButtons
 }: RunControlsProps) {
+  const effectiveVerificationHelpText = verificationAvailable
+    ? verificationHelpText
+    : "This scenario does not ship with automated verification. Review screenshots and replay output instead.";
+
   return (
     <aside className="panel controlsPanel">
       <div className="controlsHeader">
@@ -179,6 +191,20 @@ export function RunControls({
             value={prompt}
           />
         </div>
+
+        {showStartUrlField ? (
+          <div className="railField">
+            <label htmlFor="start-url">Start URL</label>
+            <input
+              disabled={controlsLocked}
+              id="start-url"
+              onChange={(event) => onStartUrlChange(event.target.value)}
+              placeholder="https://www.bing.com/"
+              type="url"
+              value={startUrl}
+            />
+          </div>
+        ) : null}
       </div>
 
       <details className="advancedPanel">
@@ -268,17 +294,17 @@ export function RunControls({
               <InfoPopover
                 id="verification-help-popover"
                 label="Verification"
-                text={verificationHelpText}
+                text={effectiveVerificationHelpText}
               />
             </div>
             <label className="feedToggle">
               <input
                 checked={verificationEnabled}
-                disabled={controlsLocked}
+                disabled={controlsLocked || !verificationAvailable}
                 onChange={(event) => onVerificationEnabledChange(event.target.checked)}
                 type="checkbox"
               />
-              Run verification checks
+              {verificationAvailable ? "Run verification checks" : "Manual review only"}
             </label>
           </div>
         </div>

@@ -114,6 +114,7 @@ Both modes use the same scenario manifests and replay pipeline. `native` is the 
 - `kanban-reprioritize-sprint` (`kanban`): teaches stateful drag-and-drop verification against a target board state derived from the operator prompt
 - `paint-draw-poster` (`paint`): teaches cursor control, drawing, and verifying saved canvas state against the live canvas
 - `booking-complete-reservation` (`booking`): teaches multi-step browsing and form completion with verification against a local confirmation record
+- `open-web-task` (`open_web`): starts from an operator-supplied URL for one-off browsing tasks and keeps review centered on screenshots and replay output instead of deterministic verification
 
 More detail lives in [docs/scenarios.md](docs/scenarios.md).
 
@@ -132,7 +133,7 @@ More detail lives in [docs/scenarios.md](docs/scenarios.md).
 - `packages/runner-core`
   Orchestration, Responses loop, scenario executors, and verification
 - `labs`
-  Static lab templates copied into run-scoped workspaces
+  Static lab templates copied into run-scoped workspaces for local scenarios, plus the placeholder template used by `open-web-task`
 - `docs`
   Architecture, scenarios, and contribution guidance
 
@@ -170,7 +171,7 @@ See [.env.example](.env.example) for a minimal local template.
 - Computer use remains high risk. Do not point this sample at authenticated, financial, medical, or otherwise high-stakes environments.
 - This repo is intentionally browser-focused. Workspace patching and file-editing scenarios are out of scope for the OSS release branch.
 - Pending computer-use safety acknowledgements are not implemented in this sample yet. Runs fail with the stable code `unsupported_safety_acknowledgement` when the API asks for one.
-- The public scenarios are local labs designed for deterministic verification. They are not intended as proofs of general web autonomy.
+- The three local lab scenarios are designed for deterministic verification. `open-web-task` is manual-review-oriented and is not intended as a proof of general web autonomy.
 
 ## Release Validation Checklist
 

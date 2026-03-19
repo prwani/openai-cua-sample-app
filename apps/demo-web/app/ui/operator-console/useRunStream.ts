@@ -89,6 +89,7 @@ export function useRunStream({
   const [maxResponseTurns, setMaxResponseTurns] =
     useState<ResponseTurnBudget>(defaultMaxResponseTurns);
   const [prompt, setPrompt] = useState(initialScenario?.defaultPrompt ?? "");
+  const [startUrl, setStartUrl] = useState("");
   const [streamLogs, setStreamLogs] = useState(true);
   const [activeRun, setActiveRun] = useState<RunDetail | null>(null);
   const [runEvents, setRunEvents] = useState<RunEvent[]>([]);
@@ -373,6 +374,10 @@ export function useRunStream({
 
     setMode(nextScenario.defaultMode);
     setPrompt(nextScenario.defaultPrompt);
+
+    if (nextScenario.verification.length === 0) {
+      setVerificationEnabled(false);
+    }
   };
 
   const handleOpenReplay = () => {
@@ -391,7 +396,12 @@ export function useRunStream({
   };
 
   const handleStartRun = async () => {
-    if (!runnerOnline || !selectedScenario || prompt.trim().length === 0) {
+    if (
+      !runnerOnline ||
+      !selectedScenario ||
+      prompt.trim().length === 0 ||
+      (selectedScenario.requiresStartUrl && startUrl.trim().length === 0)
+    ) {
       return;
     }
 
@@ -414,6 +424,9 @@ export function useRunStream({
             model: defaultRunModel,
             prompt,
             scenarioId: selectedScenario.id,
+            ...(selectedScenario.requiresStartUrl
+              ? { startUrl: startUrl.trim() }
+              : {}),
             verificationEnabled,
           }),
           headers: {
@@ -431,11 +444,16 @@ export function useRunStream({
       setActiveRun(detail);
       setRunEvents(detail.events);
       setWorkspaceState(null);
+      if (detail.run.startUrl) {
+        setStartUrl(detail.run.startUrl);
+      }
       appendManualTranscript(
         createManualTranscript(
           "control",
           "operator",
-          `Run ${started.runId} started for ${selectedScenario.title}.`,
+          selectedScenario.requiresStartUrl
+            ? `Run ${started.runId} started for ${selectedScenario.title} at ${startUrl.trim()}.`
+            : `Run ${started.runId} started for ${selectedScenario.title}.`,
         ),
       );
     } catch (error) {
@@ -509,7 +527,7 @@ export function useRunStream({
   };
 
   const handleResetWorkspace = async () => {
-    if (!runnerOnline || !selectedScenario) {
+    if (!runnerOnline || !selectedScenario || selectedScenario.requiresStartUrl) {
       return;
     }
 
@@ -671,6 +689,7 @@ export function useRunStream({
     prompt,
     runnerOnline,
     screenshots,
+    startUrl,
     selectedBrowser,
     selectedRun,
     selectedScenario,
@@ -681,6 +700,7 @@ export function useRunStream({
     setMaxResponseTurns,
     setMode,
     setPrompt,
+    setStartUrl,
     setStreamLogs,
     setVerificationEnabled,
     streamLogs,

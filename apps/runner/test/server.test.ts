@@ -110,7 +110,32 @@ describe("runner server", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(scenariosResponseSchema.parse(response.json())).toHaveLength(3);
+      expect(scenariosResponseSchema.parse(response.json())).toHaveLength(4);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns a structured error when open web task is missing its start URL", async () => {
+    const app = createServer();
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        payload: {
+          browserMode: "headless",
+          mode: "code",
+          prompt: "Find the current USD/INR exchange rate and stop on the results page.",
+          scenarioId: "open-web-task",
+        },
+        url: "/api/runs",
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(runnerErrorResponseSchema.parse(response.json())).toMatchObject({
+        code: "missing_start_url",
+        hint: expect.stringContaining("Provide startUrl"),
+      });
     } finally {
       await app.close();
     }
